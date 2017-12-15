@@ -40,23 +40,26 @@ UKF::UKF()
     std_laspy_ = 0.15;
 
     // Radar measurement noise standard deviation radius in m
-    std_radr_ = 0.3;
+    std_radr_ = 0.2;
 
     // Radar measurement noise standard deviation angle in rad
-    std_radphi_ = 0.03;
+    std_radphi_ = 0.02;
 
     // Radar measurement noise standard deviation radius change in m/s
-    std_radrd_ = 0.3;
+    std_radrd_ = 0.15;
 
     // TODO: Complete the initialization. See ukf.h for other member properties.
     // Hint: one or more values initialized above might be wildly off...
-    lambda_ = 3.0f;
 
-    MatrixXd Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1);
+
+    MatrixXd Xsig_pred_ = MatrixXd(n_x_, 2*n_aug_+1);
+    Xsig_pred_.fill(0.0);
 
     // State dimensions hard-coded
     n_x_ = 5;
     n_aug_ = 7;
+
+    lambda_ = 3-n_aug_;
 
     weights_ = VectorXd(2*n_aug_+1);
 
@@ -88,7 +91,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
         double psi, psi_dot;
         double phi, rho, rho_dot;
 
-        x_ << 0.1f, 0.1f, 0.1f, 0.1f, 0.1f;
         P_ = MatrixXd::Identity(n_x_, n_x_);
 
         if (meas_package.sensor_type_ == MeasurementPackage::LASER)
@@ -180,6 +182,7 @@ void UKF::Prediction(double delta_t)
     Q << std_a_*std_a_, 0, 
          0, std_yawdd_*std_yawdd_;
 
+
     P_aug.topLeftCorner(n_x_, n_x_) = P_;     
     P_aug.bottomRightCorner(2, 2) = Q;
 
@@ -194,12 +197,14 @@ void UKF::Prediction(double delta_t)
         Xsig_aug.col(i+n_aug_+1) = x_aug - sqrt(lambda_+n_aug_) * A_aug.col(i);    
     }
 
-    // Reinitialize with zero
+    //cout << A_aug << endl;
 
+
+    // Reinitialize with zero
     Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1);
 
-    x_ = VectorXd::Zero(n_x_);
-    P_ = MatrixXd::Zero(n_x_, n_x_);
+    x_.fill(0.0);
+    P_.fill(0.0);
 
     // Predict sigma points  
     for (int i=0; i < 2*n_aug_+1; ++i)
@@ -212,9 +217,10 @@ void UKF::Prediction(double delta_t)
         nu_a = Xsig_aug.col(i)(5);
         nu_psidd = Xsig_aug.col(i)(6);
 
+        //cout << px << "\t" << py << endl;
 
         // Don't forget to exclude division by zero!    
-        if (fabs(psi_dot) > 0.01f)
+        if (fabs(psi_dot) > 0.01)
         {
             Xsig_pred_.col(i)(0) = px + v/psi_dot * (sin(psi+psi_dot*delta_t)-sin(psi)) + 0.5f * delta_t*delta_t * cos(psi) * nu_a;
             Xsig_pred_.col(i)(1) = py + v/psi_dot * (-cos(psi+psi_dot*delta_t)+cos(psi)) + 0.5f * delta_t*delta_t * sin(psi) * nu_a;
@@ -236,12 +242,12 @@ void UKF::Prediction(double delta_t)
         x_ += weights_(i) * Xsig_pred_.col(i);
 
         VectorXd delta_x = Xsig_pred_.col(i)-x_;
-        if (delta_x(3) > PI) delta_x(3) -= 2*PI;
-        else if (delta_x(3) < PI) delta_x(3) += 2*PI;
+        while (delta_x(3) > PI) delta_x(3) -= 2*PI;
+        while (delta_x(3) < PI) delta_x(3) += 2*PI;
 
         P_ += weights_(i) * delta_x * delta_x.transpose(); 
     }
-    //cout << Xsig_pred_.col(0)(0) << "\t" << Xsig_pred_.col(0)(1) << endl;
+    //cout << Xsig_pred_.col(2)(0) << "\t" << Xsig_pred_.col(2)(1) << endl;
 }
 
 
@@ -320,20 +326,21 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
 
     const int n_z = meas_package.raw_measurements_.size();
     
-    MatrixXd Zsig = MatrixXd::Zero(n_z, 2*n_aug_+1);
+    MatrixXd Zsig = MatrixXd(n_z, 2*n_aug_+1);
+    Zsig.fill(0.0);
     VectorXd z = VectorXd(3);
-    VectorXd z_pred = VectorXd::Zero(3);
+    VectorXd z_pred = VectorXd(3);
+    z_pred.fill(0.0);
 
-    cout << z_pred << endl;
 
     //calculate measurement covariance matrix S
     MatrixXd R = MatrixXd(n_z, n_z);
-    MatrixXd S = MatrixXd::Zero(n_z, n_z);
-    MatrixXd Tc = MatrixXd::Zero(n_x_, n_z);
+    MatrixXd S = MatrixXd(n_z, n_z);
+    MatrixXd Tc = MatrixXd(n_x_, n_z);
+    MatrixXd K;
 
-    R << std_radr_*std_radr_, 0, 0,
-         0, std_radphi_*std_radphi_, 0,
-         0, 0, std_radrd_*std_radrd_;
+    S.fill(0.0);
+    Tc.fill(0.0);
 
 
     // Measurement values
@@ -341,57 +348,69 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         z(i) = meas_package.raw_measurements_(i);
     }
 
+
+    // Measurement sigma point prediction
     for (int i=0; i<2*n_aug_+1 ; ++i)
     {
         px = Xsig_pred_(0,i);
         py = Xsig_pred_(1,i);
         v = Xsig_pred_(2,i);
         yaw = Xsig_pred_(3,i);
-                
+        
+        //cout << px << "\t" << py << endl;
 
         vx = v*cos(yaw);
         vy = v*sin(yaw);
+
 
         rho = sqrt(px*px+py*py);
         phi = atan2(py, px);    // returns values between -PI and +PI
         rho_dot = (px*vx+py*vy)/rho;
 
+        
         Zsig.col(i) << rho, phi, rho_dot;
 
         // Calculate mean predicted measurement
         z_pred += weights_(i) * Zsig.col(i); 
     }
 
-    cout << z_pred << endl;
+
 
     for (int i=0; i<2*n_aug_+1 ; ++i) {
         // Predicted measurement covariance
         VectorXd delta_z = Zsig.col(i)-z_pred;
 
-        //if (delta_z(1) > PI) delta_z(1) -= 2*PI;
-        //if (delta_z(1) < PI) delta_z(1) += 2*PI;
+        while (delta_z(1) > PI) delta_z(1) -= 2*PI;
+        while (delta_z(1) < PI) delta_z(1) += 2*PI;
 
         S += weights_(i) * delta_z * delta_z.transpose();
 
         // Calculate cross correlation matrix
         VectorXd delta_x = Xsig_pred_.col(i)-x_;
 
-        //if (delta_x(3) > PI) delta_x(3) -= 2*PI;
-        //if (delta_x(3) < PI) delta_x(3) += 2*PI;
+        while (delta_x(3) > PI) delta_x(3) -= 2*PI;
+        while (delta_x(3) < PI) delta_x(3) += 2*PI;
 
         Tc += weights_(i) * delta_x * delta_z.transpose();  
     }
 
 
     
-    //S += R; // Add measurement error matrix
-    MatrixXd K = Tc * S.inverse(); // Calculate Kalman gain K;
+
+    R << std_radr_*std_radr_, 0, 0,
+         0, std_radphi_*std_radphi_, 0,
+         0, 0, std_radrd_*std_radrd_;
+
+    S = S + R; // Add measurement error matrix
+    
+    K = Tc * S.inverse(); // Calculate Kalman gain K;
+
 
     // Update state mean and covariance matrix
     x_ = x_ + K * (z-z_pred);
     P_ = P_ - K * S * K.transpose();
 
-
+    //cout << x_(2) << "\t" << x_(3) << endl;
     /**
      *  Normalized Innovation Squared (NIS)
      */
