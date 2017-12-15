@@ -150,8 +150,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
     {
         UpdateRadar(meas_package);
     }
-
-
 }
 
 /**
