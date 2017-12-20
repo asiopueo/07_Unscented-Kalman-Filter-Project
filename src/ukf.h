@@ -6,10 +6,17 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <math.h>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
+inline double normalization(double angle)
+{   
+    while (angle > M_PI) angle -= 2*M_PI;
+    while (angle < M_PI) angle += 2*M_PI;
+    return angle;
+}
 
 
 class UKF 
@@ -57,10 +64,15 @@ class UKF
         ///* Radar measurement noise standard deviation radius change in m/s
         double std_radrd_ ;
 
+        MatrixXd R_radar_;
+        MatrixXd R_lidar_;
+        MatrixXd H_lidar_;
+
         ///* Weights of sigma points
         VectorXd weights_;
 
-        ///* State dimension
+        ///* State dimensions
+        int n_z_;
         int n_x_;
 
         ///* Augmented state dimension
@@ -68,6 +80,8 @@ class UKF
 
         ///* Sigma point spreading parameter
         double lambda_;
+
+
 
 
         /**
@@ -105,5 +119,6 @@ class UKF
          */
         void UpdateRadar(MeasurementPackage meas_package);
 };
+
 
 #endif /* UKF_H */
