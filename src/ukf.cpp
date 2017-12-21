@@ -9,17 +9,17 @@ using Eigen::VectorXd;
 using std::vector;
 
 // Threshold to avoid division by zero
-#define THRESHOLD 0.001
+#define THRESHOLD 0.0001
 
 
 
 UKF::UKF()
 {
     // if this is false, laser measurements will be ignored (except during init)
-    use_laser_ = false;
+    use_laser_ = true;
 
     // if this is false, radar measurements will be ignored (except during init)
-    use_radar_ = true;
+    use_radar_ = false;
 
 
     // initial state vector
@@ -57,9 +57,9 @@ UKF::UKF()
     n_x_ = 5;
     n_aug_ = 7;
 
-    H_lidar_ = MatrixXd(2, 4);
-    H_lidar_ << 1, 0, 0, 0,
-                0, 1, 0, 0;
+    H_lidar_ = MatrixXd(2, 5);
+    H_lidar_ << 1, 0, 0, 0, 0,
+                0, 1, 0, 0, 0;
 
     R_radar_ = MatrixXd(n_z_, n_z_);
     R_radar_ << std_radr_*std_radr_, 0, 0,
@@ -146,7 +146,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
     
 
     double dt; // Time in seconds
-    dt = (meas_package.timestamp_ - time_us_) / 1000000.f;
+    dt = double(meas_package.timestamp_ - time_us_) / 1000000.f;
     time_us_ = meas_package.timestamp_;
 
 
@@ -202,7 +202,11 @@ void UKF::Prediction(double delta_t)
         Xsig_aug.col(i+n_aug_+1) = x_aug - sqrt(lambda_+n_aug_) * A_aug.col(i);    
     }
 
-    //cout << A_aug << endl;
+    /*
+     *  Cholesky decomposition is not permissible ---> Algorithm is not stable!
+     */
+
+    cout << A_aug << endl;
 
     // Reinitialize with zero
     Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1);
@@ -221,15 +225,14 @@ void UKF::Prediction(double delta_t)
         const double nu_a = Xsig_aug.col(i)(5);
         const double nu_psidd = Xsig_aug.col(i)(6);
 
-        //cout << px << "\t" << py << endl;
 
         // Don't forget to exclude division by zero!    
         if (fabs(yaw_dot) > THRESHOLD)
         {
-            Xsig_pred_.col(i)(0) = px + v/yaw_dot * (sin(yaw+yaw_dot*delta_t)-sin(yaw)) + 0.5f * delta_t*delta_t * cos(yaw) * nu_a;
-            Xsig_pred_.col(i)(1) = py + v/yaw_dot * (-cos(yaw+yaw_dot*delta_t)+cos(yaw)) + 0.5f * delta_t*delta_t * sin(yaw) * nu_a;
+            Xsig_pred_.col(i)(0) = px + v/yaw_dot * (sin(yaw+yaw_dot*delta_t)-sin(yaw)) + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
+            Xsig_pred_.col(i)(1) = py + v/yaw_dot * (-cos(yaw+yaw_dot*delta_t)+cos(yaw)) + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
             Xsig_pred_.col(i)(2) = v + delta_t * nu_a;
-            Xsig_pred_.col(i)(3) = yaw + yaw_dot * delta_t + 0.5f * delta_t*delta_t * nu_psidd;
+            Xsig_pred_.col(i)(3) = yaw + yaw_dot * delta_t + 0.5 * delta_t*delta_t * nu_psidd;
             Xsig_pred_.col(i)(4) = yaw_dot + delta_t * nu_psidd;
         }
         else
@@ -238,9 +241,8 @@ void UKF::Prediction(double delta_t)
             Xsig_pred_.col(i)(1) = py + v * sin(yaw) * delta_t + 0.5f * delta_t*delta_t * sin(yaw) * nu_a;
             Xsig_pred_.col(i)(2) = v + delta_t * nu_a;
             Xsig_pred_.col(i)(3) = yaw + 0.5f * delta_t*delta_t * nu_psidd;
-            Xsig_pred_.col(i)(4) = delta_t * nu_psidd; // psi_dot is not necessary
+            Xsig_pred_.col(i)(4) = 0 + delta_t * nu_psidd; // psi_dot is not necessary
         }
-
 
         // Predicted mean and covariance
         x_ += weights_(i) * Xsig_pred_.col(i);
@@ -250,8 +252,8 @@ void UKF::Prediction(double delta_t)
 
         P_ += weights_(i) * delta_x * delta_x.transpose(); 
     }
-    //cout << Xsig_pred_.col(2)(0) << "\t" << Xsig_pred_.col(2)(1) << endl;
 }
+
 
 
 /**
@@ -267,29 +269,29 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
      *  We are allowed to use the linear Kalman equations here
      */
     // Initialization the measurement matrix for the LIDAR
-    MatrixXd H = MatrixXd(n_z_, n_x_);
-    VectorXd y = VectorXd(n_z_);
-    VectorXd z = VectorXd(n_z_);
-    VectorXd z_pred = VectorXd(n_z_);
-    MatrixXd S, K;
+    VectorXd y = VectorXd(2);
+    VectorXd z = VectorXd(2);
+    VectorXd z_pred = VectorXd(2);
+
+    MatrixXd S = MatrixXd(2, 2);
+    MatrixXd K = MatrixXd(5, 2);
     MatrixXd I = MatrixXd::Identity(n_x_, n_x_);
 
-    MatrixXd PHt;
+    MatrixXd PHt = MatrixXd(5, 2);
     PHt = P_ * H_lidar_.transpose();
 
-    for (int i=0; i<n_z_; ++i)
+    for (int i=0; i<2; ++i)
         z(i) = meas_package.raw_measurements_(i);
 
 
-    y = z - H * x_;
-    S = H * PHt + R_lidar_;
+    y = z - H_lidar_ * x_;
+    S = H_lidar_ * PHt + R_lidar_;
 
     // Kalman gain
     K = PHt * S.inverse();
-
     // new state
     x_ = x_ + K * y;
-    P_ = (I - K * H) * P_;
+    P_ = (I - K * H_lidar_) * P_;
 
 
     /**
@@ -329,7 +331,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     //calculate measurement covariance matrix S
     MatrixXd S = MatrixXd(n_z_, n_z_);
     MatrixXd Tc = MatrixXd(n_x_, n_z_);
-    MatrixXd K;
+    MatrixXd K = MatrixXd(n_x_, n_z_);
 
     S.fill(0.0);
     Tc.fill(0.0);
@@ -356,7 +358,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
 
         rho = sqrt(px*px+py*py);
         if (rho > THRESHOLD) {
-            phi = atan2(py, px);    // returns values between -PI and +PI
+            phi = atan2(py, px);    // returns values between -M_PI and +M_PI
             rho_dot = (px*vx+py*vy)/rho;
         }
         else {
