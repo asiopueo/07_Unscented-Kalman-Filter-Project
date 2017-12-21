@@ -19,7 +19,7 @@ UKF::UKF()
     use_laser_ = true;
 
     // if this is false, radar measurements will be ignored (except during init)
-    use_radar_ = false;
+    use_radar_ = true;
 
 
     // initial state vector
@@ -204,9 +204,12 @@ void UKF::Prediction(double delta_t)
 
     /*
      *  Cholesky decomposition is not permissible ---> Algorithm is not stable!
+     *  
+     *  https://discussions.udacity.com/t/numerical-instability-of-the-implementation/230449
      */
 
-    cout << A_aug << endl;
+
+    //cout << A_aug << endl;
 
     // Reinitialize with zero
     Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1);
