@@ -72,14 +72,21 @@ class UKF
         MatrixXd H_lidar_;
 
         ///* Weights of sigma points
-        VectorXd weights_;
+        VectorXd weights_m_; // weights for the mean values
+        VectorXd weights_c_; // weights for the covariance matrices
 
         ///* State dimensions
-        int n_z_;
+        int n_z_radar_;
+        int n_z_lidar_;
         int n_x_;
 
         ///* Augmented state dimension
         int n_aug_;
+
+        ///* van-der-Merwe-coefficients 
+        double alpha_;
+        double beta_;
+        double kappa_;
 
         ///* Sigma point spreading parameter
         double lambda_;
@@ -103,12 +110,18 @@ class UKF
          */
         void ProcessMeasurement(MeasurementPackage meas_package);
 
+
+        VectorXd BicycleModel(VectorXd state, double nu_a, double nu_psidd);
+
+
         /**
          * Prediction Predicts sigma points, the state, and the state covariance
          * matrix
          * @param delta_t Time between k and k+1 in s
          */
         void Prediction(double delta_t);
+
+
 
         /**
          * Updates the state and the state covariance matrix using a laser measurement
