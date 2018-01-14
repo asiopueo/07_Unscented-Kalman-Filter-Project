@@ -19,14 +19,7 @@ UKF::UKF()
     use_laser_ = true;
 
     // if this is false, radar measurements will be ignored (except during init)
-    use_radar_ = false;
-
-
-    // initial state vector
-    x_ = VectorXd(5);
-
-    // initial covariance matrix
-    P_ = MatrixXd(5, 5);
+    use_radar_ = true;
 
     // Process noise standard deviation longitudinal acceleration in m/s^2
     std_a_ = 0.1; // best values somewhere between 0 and 1
@@ -58,6 +51,15 @@ UKF::UKF()
     n_x_ = 5;
     n_aug_ = 7;
 
+
+    // initial state vector
+    x_ = VectorXd(n_x_);
+
+    // initial covariance matrix
+    P_ = MatrixXd(n_x_, n_x_);
+
+
+
     H_lidar_ = MatrixXd(n_z_lidar_, n_x_);
     H_lidar_ << 1, 0, 0, 0, 0,
                 0, 1, 0, 0, 0;
@@ -67,13 +69,11 @@ UKF::UKF()
                 0, std_radphi_*std_radphi_, 0,
                 0, 0, std_radrd_*std_radrd_;
 
-    R_lidar_ = MatrixXd(2, 2);
+    R_lidar_ = MatrixXd(n_z_lidar_, n_z_lidar_);
     R_lidar_ << std_laspx_ * std_laspx_, 0,
                 0, std_laspy_ * std_laspy_;
 
-    MatrixXd Xsig_pred_ = MatrixXd(n_x_, 2*n_aug_+1);
-    Xsig_pred_.fill(0.0);
-
+    Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1); // Hat 'MatrixXd' vor diesem term gestört?
 
     // Initialization of van-der-Merwe-coefficients
     kappa_ = 0.1;
@@ -224,11 +224,18 @@ void UKF::Prediction(double delta_t)
 
 
     // Generate augmented sigma points
-    MatrixXd A_aug = P_aug.llt().matrixL();
-    Eigen::LLT<Eigen::MatrixXd> lltOfP_aug(P_aug);
+    Eigen::LLT<Eigen::MatrixXd> llt_of_P_aug(P_aug);
+
+    if(llt_of_P_aug.info() == Eigen::NumericalIssue)
+    {
+        cout << "Possibly non semi-positive definite matrix!" << endl;;
+    }  
+
+    MatrixXd A_aug = llt_of_P_aug.matrixL();
 
 
     Xsig_aug.col(0) = x_aug;
+
     for (int i=0; i < n_aug_; ++i) 
     {
         Xsig_aug.col(i+1) = x_aug + sqrt(lambda_+n_aug_) * A_aug.col(i);
@@ -241,21 +248,18 @@ void UKF::Prediction(double delta_t)
      *  https://discussions.udacity.com/t/numerical-instability-of-the-implementation/230449
      */
 
-    if(lltOfP_aug.info() == Eigen::NumericalIssue)
-    {
-        cout << "Possibly non semi-positive definite matrix!" << endl;;
-    }    
+  
 
 
     //cout << A_aug << endl; // ==> yaw_dot diverges!
 
-    x_.setZero();
-    P_.setZero();
+    x_.fill(0);
+    P_.fill(0);
 
     // Predict sigma points  
     for (int i=0; i < 2*n_aug_+1; ++i)
     {
-        VectorXd x_pred(5);
+        VectorXd x_pred(n_x_);
 
         x_pred(0) = Xsig_aug.col(i)(0); // px
         x_pred(1) = Xsig_aug.col(i)(1); // py
@@ -347,17 +351,17 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     // You'll also need to calculate the radar NIS.
     //transform sigma points into measurement space
     
-    float px, py;
-    float v;
-    float yaw;
-    float vx, vy;
-    float rho, phi, rho_dot;
+    double px, py;
+    double v;
+    double yaw;
+    double vx, vy;
+    double rho, phi, rho_dot;
 
     MatrixXd Zsig = MatrixXd(n_z_radar_, 2*n_aug_+1);
-    Zsig.fill(0.0);
+    Zsig.fill(0);
     VectorXd z = VectorXd(3);
     VectorXd z_pred = VectorXd(3);
-    z_pred.fill(0.0);
+    z_pred.fill(0);
 
 
     //calculate measurement covariance matrix S
@@ -365,9 +369,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     MatrixXd Tc = MatrixXd(n_x_, n_z_radar_);
     MatrixXd K = MatrixXd(n_x_, n_z_radar_);
 
-    S.setZero();
-    Tc.setZero();
-
+    S.fill(0);
+    Tc.fill(0);
 
     // Measurement values
     for (int i=0; i<n_z_radar_; ++i) {
@@ -386,12 +389,14 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         vx = v*cos(yaw);
         vy = v*sin(yaw);
         
-        if (px==0 && py==0) {
+        if (!(px==0 && py==0)) 
+        {
             rho = sqrt(px*px+py*py);
             phi = atan2(py, px);    // returns values between -M_PI and +M_PI
             rho_dot = (px*vx+py*vy)/rho;
         }
-        else {
+        else 
+        {
             phi = 0.0;
             rho_dot = 0.0;
         }
@@ -399,10 +404,9 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         Zsig.col(i) << rho, phi, rho_dot;
 
         // Calculate mean predicted measurement
-        z_pred += weights_m_(i) * Zsig.col(i); 
+        z_pred += weights_c_(i) * Zsig.col(i); 
     }
-
-
+    
 
     for (int i=0; i<2*n_aug_+1 ; ++i) {
         // Predicted measurement covariance
@@ -420,8 +424,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         Tc += weights_c_(i) * delta_x * delta_z.transpose();  
     }
 
-
-    
 
     S = S + R_radar_; // Add measurement error matrix
     
