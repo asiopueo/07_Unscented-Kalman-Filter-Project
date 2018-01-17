@@ -77,7 +77,7 @@ UKF::UKF()
 
     // Initialization of van-der-Merwe-coefficients
     alpha_ = 1.0;
-    beta_ = 0.1;
+    beta_ = 0.0;
     kappa_ = 0.1;
 
 
@@ -388,8 +388,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     double rho, phi, rho_dot;
 
     MatrixXd Zsig = MatrixXd::Zero(n_z_radar_, 2*n_aug_+1);
-    VectorXd z = VectorXd(3);
-    VectorXd z_pred = VectorXd::Zero(3);
+    VectorXd z = VectorXd(n_z_radar_);
+    VectorXd z_pred = VectorXd::Zero(n_z_radar_);
 
 
     //calculate measurement covariance matrix S
@@ -456,8 +456,13 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     for (int i=0; i<n_z_radar_; ++i)
         z(i) = meas_package.raw_measurements_(i);
 
+
+    VectorXd delta_z = z-z_pred;
+    delta_z(1) = normalization(delta_z(1));
+
     // Update state mean and covariance matrix
-    x_ = x_ + K * (z-z_pred);
+    //x_ = x_ + K * (z-z_pred);
+    x_ = x_ + K * delta_z;
     P_ = P_ - K * S * K.transpose();
 
     //cout << x_(2) << "\t" << x_(3) << endl;
