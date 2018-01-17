@@ -16,7 +16,7 @@ using std::vector;
 UKF::UKF()
 {
     // if this is false, laser measurements will be ignored (except during init)
-    use_laser_ = true;
+    use_laser_ = false;
 
     // if this is false, radar measurements will be ignored (except during init)
     use_radar_ = true;
@@ -76,9 +76,10 @@ UKF::UKF()
     Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1); // Hat 'MatrixXd' vor diesem term gestört?
 
     // Initialization of van-der-Merwe-coefficients
-    kappa_ = 0.1;
-    beta_ = 0.1;
     alpha_ = 1.0;
+    beta_ = 0.1;
+    kappa_ = 0.1;
+
 
     lambda_ = pow(alpha_, 2) * (n_aug_ + kappa_) - n_aug_;
 
@@ -226,6 +227,9 @@ void UKF::Prediction(double delta_t)
     // Generate augmented sigma points
     Eigen::LLT<Eigen::MatrixXd> llt_of_P_aug(P_aug);
 
+    /*
+     *  Throws out a message if the Cholesky decomposition is not mathematically sound (i.e., wrong requirements).
+     */
     if(llt_of_P_aug.info() == Eigen::NumericalIssue)
     {
         cout << "Possibly non semi-positive definite matrix!" << endl;;
@@ -242,16 +246,6 @@ void UKF::Prediction(double delta_t)
         Xsig_aug.col(i+n_aug_+1) = x_aug - sqrt(lambda_+n_aug_) * A_aug.col(i);    
     }
 
-    /*
-     *  Cholesky decomposition is not permissible ---> Algorithm is not stable!
-     *  
-     *  https://discussions.udacity.com/t/numerical-instability-of-the-implementation/230449
-     */
-
-  
-
-
-    //cout << A_aug << endl; // ==> yaw_dot diverges!
 
     x_.fill(0);
     P_.fill(0);
@@ -279,6 +273,7 @@ void UKF::Prediction(double delta_t)
         k4 = delta_t * BicycleModel(x_pred + k3, nu_a, nu_psidd );
 
         x_pred = x_pred + 1.0/6.0 * (k1 + 2*k2 + 2*k3 + k4);
+        Xsig_pred_.col(i) = x_pred;
 
         // Predicted mean and covariance
         x_ += weights_m_(i) * x_pred;
@@ -315,6 +310,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
 
     MatrixXd PHt = MatrixXd(n_x_, n_z_lidar_);
     PHt = P_ * H_lidar_.transpose();
+
 
     for (int i=0; i<n_z_lidar_; ++i)
         z(i) = meas_package.raw_measurements_(i);
@@ -357,25 +353,17 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     double vx, vy;
     double rho, phi, rho_dot;
 
-    MatrixXd Zsig = MatrixXd(n_z_radar_, 2*n_aug_+1);
-    Zsig.fill(0);
+    MatrixXd Zsig = MatrixXd::Zero(n_z_radar_, 2*n_aug_+1);
     VectorXd z = VectorXd(3);
-    VectorXd z_pred = VectorXd(3);
-    z_pred.fill(0);
+    VectorXd z_pred = VectorXd::Zero(3);
 
 
     //calculate measurement covariance matrix S
-    MatrixXd S = MatrixXd(n_z_radar_, n_z_radar_);
-    MatrixXd Tc = MatrixXd(n_x_, n_z_radar_);
+    MatrixXd S = MatrixXd::Zero(n_z_radar_, n_z_radar_);
+    MatrixXd Tc = MatrixXd::Zero(n_x_, n_z_radar_);
     MatrixXd K = MatrixXd(n_x_, n_z_radar_);
 
-    S.fill(0);
-    Tc.fill(0);
 
-    // Measurement values
-    for (int i=0; i<n_z_radar_; ++i) {
-        z(i) = meas_package.raw_measurements_(i);
-    }
 
 
     // Measurement sigma point prediction
@@ -389,7 +377,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         vx = v*cos(yaw);
         vy = v*sin(yaw);
         
-        if (!(px==0 && py==0)) 
+        if (px!=0 || py!=0) 
         {
             rho = sqrt(px*px+py*py);
             phi = atan2(py, px);    // returns values between -M_PI and +M_PI
@@ -397,6 +385,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         }
         else 
         {
+            rho = 0.0;
             phi = 0.0;
             rho_dot = 0.0;
         }
@@ -429,6 +418,9 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     
     K = Tc * S.inverse(); // Calculate Kalman gain K;
 
+    // Measurement values
+    for (int i=0; i<n_z_radar_; ++i)
+        z(i) = meas_package.raw_measurements_(i);
 
     // Update state mean and covariance matrix
     x_ = x_ + K * (z-z_pred);
