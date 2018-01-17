@@ -195,6 +195,33 @@ VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_ps
 }
 
 
+/*
+    Included the necessary calculations for direct integration (cf. comment in UKF::Prediction below):
+
+
+    // Don't forget to exclude division by zero!    
+    if (fabs(yaw_dot) > THRESHOLD)
+    {
+        Xsig_pred_.col(i)(0) = px + v/yaw_dot * (sin(yaw+yaw_dot*delta_t)-sin(yaw)) + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
+        Xsig_pred_.col(i)(1) = py + v/yaw_dot * (-cos(yaw+yaw_dot*delta_t)+cos(yaw)) + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
+        Xsig_pred_.col(i)(2) = v + delta_t * nu_a;
+        Xsig_pred_.col(i)(3) = yaw + yaw_dot * delta_t + 0.5 * delta_t*delta_t * nu_psidd;
+        Xsig_pred_.col(i)(4) = yaw_dot + delta_t * nu_psidd;
+    }
+    else
+    {
+        Xsig_pred_.col(i)(0) = px + v * cos(yaw) * delta_t + 0.5f * delta_t*delta_t * cos(yaw) * nu_a;
+        Xsig_pred_.col(i)(1) = py + v * sin(yaw) * delta_t + 0.5f * delta_t*delta_t * sin(yaw) * nu_a;
+        Xsig_pred_.col(i)(2) = v + delta_t * nu_a;
+        Xsig_pred_.col(i)(3) = yaw + 0.5f * delta_t*delta_t * nu_psidd;
+        Xsig_pred_.col(i)(4) = 0 + delta_t * nu_psidd; // psi_dot is not necessary
+    }
+*/
+
+
+
+
+
 
 /**
  * Predicts sigma points, the state, and the state covariance matrix.
@@ -264,7 +291,14 @@ void UKF::Prediction(double delta_t)
         const double nu_a = Xsig_aug.col(i)(5);
         const double nu_psidd = Xsig_aug.col(i)(6);
 
-        // Using Runge-Kutta (RK4) method:
+        /* 
+         *  Using Runge-Kutta (RK4) method:
+         *
+         *  Included as an alternative to direct integration in order to circumvent potential 
+         *  bugs in the prediction step.
+         *
+         */
+
         VectorXd k1(n_x_), k2(n_x_), k3(n_x_), k4(n_x_);
 
         k1 = delta_t * BicycleModel(x_pred, nu_a, nu_psidd );
@@ -393,7 +427,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         Zsig.col(i) << rho, phi, rho_dot;
 
         // Calculate mean predicted measurement
-        z_pred += weights_c_(i) * Zsig.col(i); 
+        z_pred += weights_m_(i) * Zsig.col(i); 
     }
     
 
