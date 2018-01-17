@@ -19,7 +19,7 @@ UKF::UKF()
     use_laser_ = true;
 
     // if this is false, radar measurements will be ignored (except during init)
-    use_radar_ = false;
+    use_radar_ = true;
 
     // Process noise standard deviation longitudinal acceleration in m/s^2
     std_a_ = 0.1; // best values somewhere between 0 and 1
