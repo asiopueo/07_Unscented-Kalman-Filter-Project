@@ -16,10 +16,10 @@ using std::vector;
 UKF::UKF()
 {
     // if this is false, laser measurements will be ignored (except during init)
-    use_laser_ = false;
+    use_laser_ = true;
 
     // if this is false, radar measurements will be ignored (except during init)
-    use_radar_ = true;
+    use_radar_ = false;
 
     // Process noise standard deviation longitudinal acceleration in m/s^2
     std_a_ = 0.1; // best values somewhere between 0 and 1
@@ -76,9 +76,9 @@ UKF::UKF()
     Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1); // Hat 'MatrixXd' vor diesem term gestört?
 
     // Initialization of van-der-Merwe-coefficients
-    alpha_ = 1.0;
-    beta_ = 0.0;
-    kappa_ = 0.1;
+    alpha_ = 0.9;   // Shall be 0 <= alpha_ <= 1 
+    beta_ = 2.0;    // Shall be beta_ >= 0; beta_==2.0 is an optimal choice for a Gaussian prior
+    kappa_ = 0.0;   // Shall be kappa_ >= 0 in order to guarantee positive-definiteness of the covariance matrix (kappa_==0 is a good default choice)
 
 
     lambda_ = pow(alpha_, 2) * (n_aug_ + kappa_) - n_aug_;
@@ -198,24 +198,35 @@ VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_ps
 /*
     Included the necessary calculations for direct integration (cf. comment in UKF::Prediction below):
 
+VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_psidd, const double delta_t)
+{
+    const double px = state(0);
+    const double py = state(1);
+    const double v = state(2);
+    const double yaw = state(3);
+    const double yaw_dot = state(4);
 
     // Don't forget to exclude division by zero!    
     if (fabs(yaw_dot) > THRESHOLD)
     {
-        Xsig_pred_.col(i)(0) = px + v/yaw_dot * (sin(yaw+yaw_dot*delta_t)-sin(yaw)) + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
-        Xsig_pred_.col(i)(1) = py + v/yaw_dot * (-cos(yaw+yaw_dot*delta_t)+cos(yaw)) + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
-        Xsig_pred_.col(i)(2) = v + delta_t * nu_a;
-        Xsig_pred_.col(i)(3) = yaw + yaw_dot * delta_t + 0.5 * delta_t*delta_t * nu_psidd;
-        Xsig_pred_.col(i)(4) = yaw_dot + delta_t * nu_psidd;
+        state(0) = px + v/yaw_dot * (sin(yaw+yaw_dot*delta_t)-sin(yaw)) + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
+        state(1) = py + v/yaw_dot * (-cos(yaw+yaw_dot*delta_t)+cos(yaw)) + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
+        state(2) = v + delta_t * nu_a;
+        state(3) = yaw + yaw_dot * delta_t + 0.5 * delta_t*delta_t * nu_psidd;
+        state(4) = yaw_dot + delta_t * nu_psidd;
     }
     else
     {
-        Xsig_pred_.col(i)(0) = px + v * cos(yaw) * delta_t + 0.5f * delta_t*delta_t * cos(yaw) * nu_a;
-        Xsig_pred_.col(i)(1) = py + v * sin(yaw) * delta_t + 0.5f * delta_t*delta_t * sin(yaw) * nu_a;
-        Xsig_pred_.col(i)(2) = v + delta_t * nu_a;
-        Xsig_pred_.col(i)(3) = yaw + 0.5f * delta_t*delta_t * nu_psidd;
-        Xsig_pred_.col(i)(4) = 0 + delta_t * nu_psidd; // psi_dot is not necessary
+        state(0) = px + v * cos(yaw) * delta_t + 0.5f * delta_t*delta_t * cos(yaw) * nu_a;
+        state(1) = py + v * sin(yaw) * delta_t + 0.5f * delta_t*delta_t * sin(yaw) * nu_a;
+        state(2) = v + delta_t * nu_a;
+        state(3) = yaw + 0.5f * delta_t*delta_t * nu_psidd;
+        state(4) = 0 + delta_t * nu_psidd; // psi_dot is not necessary
     }
+
+    return state;
+}
+
 */
 
 
@@ -246,7 +257,6 @@ void UKF::Prediction(double delta_t)
     Q << std_a_*std_a_, 0, 
          0, std_yawdd_*std_yawdd_;
 
-
     P_aug.topLeftCorner(n_x_, n_x_) = P_;     
     P_aug.bottomRightCorner(2, 2) = Q;    
 
@@ -259,13 +269,14 @@ void UKF::Prediction(double delta_t)
      */
     if(llt_of_P_aug.info() == Eigen::NumericalIssue)
     {
-        cout << "Possibly non semi-positive definite matrix!" << endl;;
+        cout << "Possibly non semi-positive definite matrix!" << endl;
     }  
 
     MatrixXd A_aug = llt_of_P_aug.matrixL();
 
 
     Xsig_aug.col(0) = x_aug;
+
 
     for (int i=0; i < n_aug_; ++i) 
     {
@@ -274,13 +285,12 @@ void UKF::Prediction(double delta_t)
     }
 
 
-    x_.fill(0);
-    P_.fill(0);
+    x_.fill(0.0);
 
     // Predict sigma points  
     for (int i=0; i < 2*n_aug_+1; ++i)
     {
-        VectorXd x_pred(n_x_);
+        VectorXd x_pred = VectorXd::Zero(n_x_);
 
         x_pred(0) = Xsig_aug.col(i)(0); // px
         x_pred(1) = Xsig_aug.col(i)(1); // py
@@ -306,17 +316,22 @@ void UKF::Prediction(double delta_t)
         k3 = delta_t * BicycleModel(x_pred + 0.5*k2, nu_a, nu_psidd );
         k4 = delta_t * BicycleModel(x_pred + k3, nu_a, nu_psidd );
 
-        x_pred = x_pred + 1.0/6.0 * (k1 + 2*k2 + 2*k3 + k4);
-        Xsig_pred_.col(i) = x_pred;
+        Xsig_pred_.col(i) = x_pred + 1.0/6.0 * (k1 + 2*k2 + 2*k3 + k4);
+        // Predicted mean
+        x_ += weights_m_(i) * x_pred;        
+    }
 
-        // Predicted mean and covariance
-        x_ += weights_m_(i) * x_pred;
-        VectorXd delta_x = x_pred - x_;
 
+
+    // Predicted covariance
+    P_.fill(0);
+    for (int i=0; i < 2*n_aug_+1; ++i)
+    {
+        VectorXd delta_x = Xsig_pred_.col(i) - x_;
         delta_x(3) = normalization(delta_x(3));
-
         P_ += weights_c_(i) * delta_x * delta_x.transpose(); 
     }
+
 }
 
 
@@ -336,7 +351,6 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
     // Initialization the measurement matrix for the LIDAR
     VectorXd y = VectorXd(n_z_lidar_);
     VectorXd z = VectorXd(n_z_lidar_);
-    VectorXd z_pred = VectorXd(n_z_lidar_);
 
     MatrixXd S = MatrixXd(n_z_lidar_, n_z_lidar_);
     MatrixXd K = MatrixXd::Zero(n_x_, n_z_lidar_);
