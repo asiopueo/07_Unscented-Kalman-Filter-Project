@@ -76,7 +76,7 @@ UKF::UKF()
     Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1); // Hat 'MatrixXd' vor diesem term gestört?
 
     // Initialization of van-der-Merwe-coefficients
-    alpha_ = 0.9;   // Shall be 0 <= alpha_ <= 1 
+    alpha_ = 0.01;   // Shall be 0 <= alpha_ <= 1 
     beta_ = 2.0;    // Shall be beta_ >= 0; beta_==2.0 is an optimal choice for a Gaussian prior
     kappa_ = 0.0;   // Shall be kappa_ >= 0 in order to guarantee positive-definiteness of the covariance matrix (kappa_==0 is a good default choice)
 
@@ -195,9 +195,8 @@ VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_ps
 }
 
 
-/*
-    Included the necessary calculations for direct integration (cf. comment in UKF::Prediction below):
-
+// Overloaded function
+// Included the necessary calculations for direct integration (cf. comment in UKF::Prediction below)
 VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_psidd, const double delta_t)
 {
     const double px = state(0);
@@ -227,7 +226,6 @@ VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_ps
     return state;
 }
 
-*/
 
 
 
@@ -309,14 +307,16 @@ void UKF::Prediction(double delta_t)
          *
          */
 
-        VectorXd k1(n_x_), k2(n_x_), k3(n_x_), k4(n_x_);
-
+        /*VectorXd k1(n_x_), k2(n_x_), k3(n_x_), k4(n_x_);
         k1 = delta_t * BicycleModel(x_pred, nu_a, nu_psidd );
         k2 = delta_t * BicycleModel(x_pred + 0.5*k1, nu_a, nu_psidd );
         k3 = delta_t * BicycleModel(x_pred + 0.5*k2, nu_a, nu_psidd );
         k4 = delta_t * BicycleModel(x_pred + k3, nu_a, nu_psidd );
-
         Xsig_pred_.col(i) = x_pred + 1.0/6.0 * (k1 + 2*k2 + 2*k3 + k4);
+        */
+        Xsig_pred_.col(i) = BicycleModel(x_pred, nu_a, nu_psidd, delta_t);
+
+
         // Predicted mean
         x_ += weights_m_(i) * x_pred;        
     }

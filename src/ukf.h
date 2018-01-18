@@ -111,8 +111,9 @@ class UKF
         void ProcessMeasurement(MeasurementPackage meas_package);
 
 
+        // Overloaded method:
         VectorXd BicycleModel(VectorXd state, double nu_a, double nu_psidd);
-
+        VectorXd BicycleModel(VectorXd state, double nu_a, double nu_psidd, double dt);
 
         /**
          * Prediction Predicts sigma points, the state, and the state covariance
