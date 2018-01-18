@@ -20,8 +20,8 @@ UKF::UKF()
     use_radar_ = true;  // if this is false, radar measurements will be ignored (except during init)
 
 
-    std_a_ = 1; // Process noise standard deviation longitudinal acceleration in m/s^2
-    std_yawdd_ = 50.0; // Process noise standard deviation yaw acceleration in rad/s^2
+    std_a_ = 0.2; // Process noise standard deviation longitudinal acceleration in m/s^2
+    std_yawdd_ = 0.7; // Process noise standard deviation yaw acceleration in rad/s^2
 
 
     std_laspx_ = 0.15;  // Laser measurement noise standard deviation position1 in m
@@ -155,6 +155,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
     // dt = 0.05 seconds
     Prediction(dt);
     
+    cout << x_(3) << endl;
 
     /*
      *
