@@ -15,7 +15,6 @@ using Eigen::VectorXd;
 
 inline double normalization(double angle)
 {   
-    //std::cout << angle << std::endl; 
     while (angle > M_PI) angle -= 2*M_PI;
     while (angle < -M_PI) angle += 2*M_PI;
     return angle;

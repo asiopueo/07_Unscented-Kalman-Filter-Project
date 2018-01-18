@@ -15,32 +15,21 @@ using std::vector;
 
 UKF::UKF()
 {
-    // if this is false, laser measurements will be ignored (except during init)
-    use_laser_ = true;
+    
+    use_laser_ = true;  // if this is false, laser measurements will be ignored (except during init)
+    use_radar_ = true;  // if this is false, radar measurements will be ignored (except during init)
 
-    // if this is false, radar measurements will be ignored (except during init)
-    use_radar_ = true;
 
-    // Process noise standard deviation longitudinal acceleration in m/s^2
-    std_a_ = 0.1; // best values somewhere between 0 and 1
+    std_a_ = 1; // Process noise standard deviation longitudinal acceleration in m/s^2
+    std_yawdd_ = 50.0; // Process noise standard deviation yaw acceleration in rad/s^2
 
-    // Process noise standard deviation yaw acceleration in rad/s^2
-    std_yawdd_ = 0.1; // best values somewhere between 0 and 1
 
-    // Laser measurement noise standard deviation position1 in m
-    std_laspx_ = 0.15;
+    std_laspx_ = 0.15;  // Laser measurement noise standard deviation position1 in m
+    std_laspy_ = 0.15;  // Laser measurement noise standard deviation position2 in m
 
-    // Laser measurement noise standard deviation position2 in m
-    std_laspy_ = 0.15;
-
-    // Radar measurement noise standard deviation radius in m
-    std_radr_ = 0.3;
-
-    // Radar measurement noise standard deviation angle in rad
-    std_radphi_ = 0.03;
-
-    // Radar measurement noise standard deviation radius change in m/s
-    std_radrd_ = 0.3;
+    std_radr_ = 0.3;    // Radar measurement noise standard deviation radius in m
+    std_radphi_ = 0.03; // Radar measurement noise standard deviation angle in rad
+    std_radrd_ = 0.3;   // Radar measurement noise standard deviation radius change in m/s
 
     // TODO: Complete the initialization. See ukf.h for other member properties.
     // Hint: one or more values initialized above might be wildly off...
@@ -76,7 +65,7 @@ UKF::UKF()
     Xsig_pred_ = MatrixXd::Zero(n_x_, 2*n_aug_+1); // Hat 'MatrixXd' vor diesem term gestört?
 
     // Initialization of van-der-Merwe-coefficients
-    alpha_ = 0.01;   // Shall be 0 <= alpha_ <= 1 
+    alpha_ = 0.7;   // Shall be 0 <= alpha_ <= 1 
     beta_ = 2.0;    // Shall be beta_ >= 0; beta_==2.0 is an optimal choice for a Gaussian prior
     kappa_ = 0.0;   // Shall be kappa_ >= 0 in order to guarantee positive-definiteness of the covariance matrix (kappa_==0 is a good default choice)
 
@@ -114,11 +103,14 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
     if (!is_initialized_)
     {
         double px, py; 
-        double vx, vy, v;
-        double psi, psi_dot;
         double phi, rho, rho_dot;
 
         P_ = MatrixXd::Identity(n_x_, n_x_);
+        P_ << 10.0, 0.0, 0.0, 0.0, 0.0,
+              0.0, 2.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 10.0, 0.0, 0.0,
+              0.0, 0.0, 0.0, 0.2, 0.0,
+              0.0, 0.0, 0.0, 0.0, 0.2;
 
         if (meas_package.sensor_type_ == MeasurementPackage::LASER)
         {
@@ -164,8 +156,12 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
     Prediction(dt);
     
 
+    /*
+     *
+     * Update steps:
+     *
+     */
 
-    // Update
     if (meas_package.sensor_type_ == MeasurementPackage::LASER && use_laser_ == true)
     {
         UpdateLidar(meas_package);    
@@ -178,7 +174,8 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 
 
 
-
+// Overloaded function
+// Runge-Kutta RK4 (partially still incomplete)
 VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_psidd)
 {
     const double v = state(2);
@@ -216,11 +213,11 @@ VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_ps
     }
     else
     {
-        state(0) = px + v * cos(yaw) * delta_t + 0.5f * delta_t*delta_t * cos(yaw) * nu_a;
-        state(1) = py + v * sin(yaw) * delta_t + 0.5f * delta_t*delta_t * sin(yaw) * nu_a;
+        state(0) = px + v * cos(yaw) * delta_t + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
+        state(1) = py + v * sin(yaw) * delta_t + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
         state(2) = v + delta_t * nu_a;
-        state(3) = yaw + 0.5f * delta_t*delta_t * nu_psidd;
-        state(4) = 0 + delta_t * nu_psidd; // psi_dot is not necessary
+        state(3) = yaw + 0.5 * delta_t*delta_t * nu_psidd;
+        state(4) = delta_t * nu_psidd;
     }
 
     return state;
@@ -295,14 +292,13 @@ void UKF::Prediction(double delta_t)
         x_pred(2) = Xsig_aug.col(i)(2); // v
         x_pred(3) = Xsig_aug.col(i)(3); // yaw
         x_pred(4) = Xsig_aug.col(i)(4); // yaw_dot
-
         const double nu_a = Xsig_aug.col(i)(5);
         const double nu_psidd = Xsig_aug.col(i)(6);
 
         /* 
-         *  Using Runge-Kutta (RK4) method:
+         *  Option to use Runge-Kutta (RK4) method:
          *
-         *  Included as an alternative to direct integration in order to circumvent potential 
+         *  Included as an alternative to 'direct integration' in order to circumvent potential 
          *  bugs in the prediction step.
          *
          */
@@ -315,7 +311,6 @@ void UKF::Prediction(double delta_t)
         Xsig_pred_.col(i) = x_pred + 1.0/6.0 * (k1 + 2*k2 + 2*k3 + k4);
         */
         Xsig_pred_.col(i) = BicycleModel(x_pred, nu_a, nu_psidd, delta_t);
-
 
         // Predicted mean
         x_ += weights_m_(i) * x_pred;        
@@ -425,17 +420,17 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         vx = v*cos(yaw);
         vy = v*sin(yaw);
         
-        if (px!=0 || py!=0) 
+        rho = sqrt(px*px+py*py);
+
+        if (fabs(px)<0.0001 || fabs(py)<0.0001)
         {
-            rho = sqrt(px*px+py*py);
-            phi = atan2(py, px);    // returns values between -M_PI and +M_PI
-            rho_dot = (px*vx+py*vy)/rho;
+            phi = 0.0;
+            rho_dot = 0.0;
         }
         else 
         {
-            rho = 0.0;
-            phi = 0.0;
-            rho_dot = 0.0;
+            phi = atan2(py, px);    // returns values between -M_PI and +M_PI
+            rho_dot = (px*vx+py*vy)/rho;
         }
         
         Zsig.col(i) << rho, phi, rho_dot;
@@ -479,7 +474,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     x_ = x_ + K * delta_z;
     P_ = P_ - K * S * K.transpose();
 
-    //cout << x_(2) << "\t" << x_(3) << endl;
     /**
      *  Normalized Innovation Squared (NIS)
      */
