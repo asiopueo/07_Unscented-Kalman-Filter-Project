@@ -264,7 +264,7 @@ void UKF::Prediction(const double delta_t)
     Eigen::LLT<Eigen::MatrixXd> llt_of_P_aug(P_aug);
 
     /*
-     *  Throws out a message if the Cholesky decomposition is not mathematically sound (i.e., wrong requirements).
+     *  Throws out a message if the Cholesky decomposition is not mathematically sound (i.e., wrong prerequisites).
      */
     if(llt_of_P_aug.info() == Eigen::NumericalIssue)
     {

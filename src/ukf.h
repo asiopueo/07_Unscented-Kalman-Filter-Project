@@ -122,7 +122,7 @@ class UKF
          * matrix
          * @param delta_t Time between k and k+1 in s
          */
-        void Prediction(const ouble delta_t);
+        void Prediction(const double delta_t);
 
 
 
