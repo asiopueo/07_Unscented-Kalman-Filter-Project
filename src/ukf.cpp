@@ -155,7 +155,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
     // dt = 0.05 seconds
     Prediction(dt);
     
-    cout << x_(3) << endl;
 
     /*
      *
@@ -281,7 +280,7 @@ void UKF::Prediction(double delta_t)
     }
 
 
-    x_.fill(0.0);
+
 
     // Predict sigma points  
     for (int i=0; i < 2*n_aug_+1; ++i)
@@ -313,11 +312,17 @@ void UKF::Prediction(double delta_t)
         */
         Xsig_pred_.col(i) = BicycleModel(x_pred, nu_a, nu_psidd, delta_t);
 
-        // Predicted mean
-        x_ += weights_m_(i) * x_pred;        
+        
+                
     }
 
 
+    // Predicted mean
+    x_.fill(0.0);
+    for (int i=0; i < 2*n_aug_+1; ++i)
+    {
+        x_ += weights_m_(i) * Xsig_pred_.col(i);
+    }
 
     // Predicted covariance
     P_.fill(0);
@@ -423,7 +428,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
         
         rho = sqrt(px*px+py*py);
 
-        if (fabs(px)<0.0001 || fabs(py)<0.0001)
+        if (fabs(px)<0.0001 && fabs(py)<0.0001)
         {
             phi = 0.0;
             rho_dot = 0.0;
