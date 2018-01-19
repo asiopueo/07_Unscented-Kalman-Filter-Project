@@ -194,33 +194,37 @@ VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_ps
 
 // Overloaded function
 // Included the necessary calculations for direct integration (cf. comment in UKF::Prediction below)
-VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_psidd, const double delta_t)
+VectorXd UKF::BicycleModel(const VectorXd sigma_aug, const double delta_t)
 {
-    const double px = state(0);
-    const double py = state(1);
-    const double v = state(2);
-    const double yaw = state(3);
-    const double yaw_dot = state(4);
+    VectorXd pred(n_x_); // return vector
+
+    const double px = sigma_aug(0);
+    const double py = sigma_aug(1);
+    const double v = sigma_aug(2);
+    const double yaw = sigma_aug(3);
+    const double yaw_dot = sigma_aug(4);
+    const double nu_a = sigma_aug(5);
+    const double nu_psidd = sigma_aug(6);
 
     // Don't forget to exclude division by zero!    
     if (fabs(yaw_dot) > THRESHOLD)
     {
-        state(0) = px + v/yaw_dot * (sin(yaw+yaw_dot*delta_t)-sin(yaw)) + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
-        state(1) = py + v/yaw_dot * (-cos(yaw+yaw_dot*delta_t)+cos(yaw)) + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
-        state(2) = v + delta_t * nu_a;
-        state(3) = yaw + yaw_dot * delta_t + 0.5 * delta_t*delta_t * nu_psidd;
-        state(4) = yaw_dot + delta_t * nu_psidd;
+        pred(0) = px + v/yaw_dot * (sin(yaw+yaw_dot*delta_t)-sin(yaw)) + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
+        pred(1) = py + v/yaw_dot * (-cos(yaw+yaw_dot*delta_t)+cos(yaw)) + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
+        pred(2) = v + delta_t * nu_a;
+        pred(3) = yaw + yaw_dot * delta_t + 0.5 * delta_t*delta_t * nu_psidd;
+        pred(4) = yaw_dot + delta_t * nu_psidd;
     }
     else
     {
-        state(0) = px + v * cos(yaw) * delta_t + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
-        state(1) = py + v * sin(yaw) * delta_t + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
-        state(2) = v + delta_t * nu_a;
-        state(3) = yaw + 0.5 * delta_t*delta_t * nu_psidd;
-        state(4) = delta_t * nu_psidd;
+        pred(0) = px + v * cos(yaw) * delta_t + 0.5 * delta_t*delta_t * cos(yaw) * nu_a;
+        pred(1) = py + v * sin(yaw) * delta_t + 0.5 * delta_t*delta_t * sin(yaw) * nu_a;
+        pred(2) = v + delta_t * nu_a;
+        pred(3) = yaw + 0.5 * delta_t*delta_t * nu_psidd;
+        pred(4) = delta_t * nu_psidd;
     }
 
-    return state;
+    return pred;
 }
 
 
@@ -234,7 +238,7 @@ VectorXd UKF::BicycleModel(VectorXd state, const double nu_a, const double nu_ps
  * @param {double} delta_t the change in time (in seconds) between the last
  * measurement and this one.
  */
-void UKF::Prediction(double delta_t) 
+void UKF::Prediction(const double delta_t) 
 {
     // TODO: Complete this function! Estimate the object's location. Modify the state vector, x_. Predict sigma points, the state, and the state covariance matrix.
     VectorXd x_aug = VectorXd(n_aug_);
@@ -280,21 +284,11 @@ void UKF::Prediction(double delta_t)
     }
 
 
+    x_.fill(0.0);
 
-
-    // Predict sigma points  
+    // Predict sigma points and calculate predicted mean: 
     for (int i=0; i < 2*n_aug_+1; ++i)
     {
-        VectorXd x_pred = VectorXd::Zero(n_x_);
-
-        x_pred(0) = Xsig_aug.col(i)(0); // px
-        x_pred(1) = Xsig_aug.col(i)(1); // py
-        x_pred(2) = Xsig_aug.col(i)(2); // v
-        x_pred(3) = Xsig_aug.col(i)(3); // yaw
-        x_pred(4) = Xsig_aug.col(i)(4); // yaw_dot
-        const double nu_a = Xsig_aug.col(i)(5);
-        const double nu_psidd = Xsig_aug.col(i)(6);
-
         /* 
          *  Option to use Runge-Kutta (RK4) method:
          *
@@ -310,21 +304,15 @@ void UKF::Prediction(double delta_t)
         k4 = delta_t * BicycleModel(x_pred + k3, nu_a, nu_psidd );
         Xsig_pred_.col(i) = x_pred + 1.0/6.0 * (k1 + 2*k2 + 2*k3 + k4);
         */
-        Xsig_pred_.col(i) = BicycleModel(x_pred, nu_a, nu_psidd, delta_t);
 
-        
-                
-    }
+        Xsig_pred_.col(i) = BicycleModel(Xsig_aug.col(i), delta_t);
 
-
-    // Predicted mean
-    x_.fill(0.0);
-    for (int i=0; i < 2*n_aug_+1; ++i)
-    {
+        // Predicted mean:
         x_ += weights_m_(i) * Xsig_pred_.col(i);
     }
 
-    // Predicted covariance
+
+    // Predicted covariance:
     P_.fill(0);
     for (int i=0; i < 2*n_aug_+1; ++i)
     {

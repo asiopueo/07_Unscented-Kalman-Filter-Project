@@ -111,15 +111,18 @@ class UKF
 
 
         // Overloaded method:
+        // (definition partially incomplete)
         VectorXd BicycleModel(VectorXd state, double nu_a, double nu_psidd);
-        VectorXd BicycleModel(VectorXd state, double nu_a, double nu_psidd, double dt);
+
+        // Overloaded method:
+        VectorXd BicycleModel(const VectorXd sigma_aug, const double dt);
 
         /**
          * Prediction Predicts sigma points, the state, and the state covariance
          * matrix
          * @param delta_t Time between k and k+1 in s
          */
-        void Prediction(double delta_t);
+        void Prediction(const ouble delta_t);
 
 
 
